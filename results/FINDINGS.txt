@@ -1,0 +1,27 @@
+LI-ION BATTERY LIFE PREDICTOR - FINDINGS
+Data: NASA Li-ion 18650 cells B0005, B0006, B0007, B0018.
+
+What we did
+- Extracted per-cycle features (discharge/charge times, voltage-level times, temperatures).
+- SOH = capacity / 2.0Ah. RUL = cycles until capacity hits 1.4Ah (70% SOH).
+- SOH model: Ridge regression. RUL model: gradient boosting on the predicted SOH trajectory
+  (gap to 70%, fade-rate slopes).
+- Tested strictly: train on 3 batteries, test on the 4th (leave-one-battery-out).
+
+Results (leave-one-battery-out, mean of 4 batteries)
+- SOH: MAE 0.49 %, R2 0.995   (old README SVR: ~70% accuracy)
+- RUL: MAE 13.8 cycles, R2 0.76
+
+Model comparison (SOH MAE % / RUL MAE cycles)
+- Ridge + gradient boosting (final): 0.49 / 13.8
+- LSTM on raw features:              1.75 / 18.8
+- Hybrid LSTM on SOH trajectory:     1.32 / 16.2
+- SVR, ExtraTrees, direct RUL regression, curve extrapolation: all worse.
+
+Notes
+- LSTM loses because there is too little data (~470 cycles, 3 train batteries).
+- B0007 is the weak spot for RUL (25 cycles MAE): it lives 166 cycles vs 97-125 for the others.
+- Chronological 60/40 split looks better (SOH 0.24, RUL 11.4) but test windows are tiny; trust the strict numbers.
+- Next steps: add more Li-ion cells/datasets (rest of NASA, CALCE, Oxford) for better RUL.
+
+Reproduce (from repo root): python src/prep.py ; python src/final.py
