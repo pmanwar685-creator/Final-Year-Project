@@ -6,3 +6,7 @@ Feature analysis was done on the data and relevant features were identified. Fur
 and Remaining Useful Life(RUL) of the Li-ion battery with an accuracy of 70%. Batteries B0005, B0006, B0007 and B0018 were taken as test batteries.
 
 Future scope: Applying a deep learning model to improve the model accuracy.
+
+## Update: SOH + RUL predictor
+Code is in `src/`, outputs (plots, metrics, saved model) and a short summary in `results/` (see `results/FINDINGS.txt`).
+Run from the repo root: `python src/prep.py && python src/final.py`.
