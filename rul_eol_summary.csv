@@ -1,0 +1,5 @@
+battery_id,eol_status,eol_cycle,eol_test_id,eol_capacity_ah,capacity_threshold_ah,last_observed_discharge_cycle,last_observed_capacity_ah
+B0005,eol_observed,125,448,1.396700823,1.4,168,1.325079329
+B0006,eol_observed,109,386,1.395164297,1.4,168,1.185675233
+B0007,right_censored_no_observed_threshold_crossing,,,,1.4,168,1.432455272
+B0018,eol_observed,97,236,1.396854778,1.4,132,1.341051441
