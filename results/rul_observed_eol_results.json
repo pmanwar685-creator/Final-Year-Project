@@ -1,0 +1,136 @@
+{
+  "protocol": "LOBO across observed-EOL cells; held-out battery excluded from every fit",
+  "eol_threshold_ah": 1.4,
+  "included_cells": [
+    "B0005",
+    "B0006",
+    "B0018"
+  ],
+  "right_censored_excluded_cell": "B0007",
+  "n_labelled_cycles": 331,
+  "n_features": 37,
+  "models": {
+    "ExtraTrees": {
+      "folds": {
+        "B0005": {
+          "MAE_cycles": 8.773099047619052,
+          "RMSE_cycles": 11.089666316276128,
+          "MedianAE_cycles": 7.337499999999999,
+          "MaxAE_cycles": 29.09880952380955,
+          "R2": 0.9055447780289175,
+          "Bias_cycles": -8.074931428571428,
+          "MAPE_nonzero_RUL_pct": 21.559141669169115
+        },
+        "B0006": {
+          "MAE_cycles": 8.607374399301012,
+          "RMSE_cycles": 10.253058928010926,
+          "MedianAE_cycles": 9.348809523809521,
+          "MaxAE_cycles": 17.445452380952386,
+          "R2": 0.8938129117360964,
+          "Bias_cycles": -0.6708269986893765,
+          "MAPE_nonzero_RUL_pct": 23.018825382264616
+        },
+        "B0018": {
+          "MAE_cycles": 9.797329405989206,
+          "RMSE_cycles": 12.24737540701697,
+          "MedianAE_cycles": 11.127380952380925,
+          "MaxAE_cycles": 25.18119047619048,
+          "R2": 0.8086757597443825,
+          "Bias_cycles": 7.113382425135008,
+          "MAPE_nonzero_RUL_pct": 97.91916047155958
+        }
+      },
+      "mean": {
+        "MAE_cycles": 9.059267617636424,
+        "RMSE_cycles": 11.19670021710134,
+        "MedianAE_cycles": 9.271230158730148,
+        "MaxAE_cycles": 23.90848412698414,
+        "R2": 0.8693444831697988,
+        "Bias_cycles": -0.5441253340419324,
+        "MAPE_nonzero_RUL_pct": 47.499042507664434
+      }
+    },
+    "RandomForest": {
+      "folds": {
+        "B0005": {
+          "MAE_cycles": 9.837983475984347,
+          "RMSE_cycles": 11.66016040437494,
+          "MedianAE_cycles": 9.05527494331066,
+          "MaxAE_cycles": 25.389918934240413,
+          "R2": 0.8955765432751511,
+          "Bias_cycles": -6.813114940836941,
+          "MAPE_nonzero_RUL_pct": 22.51977406656479
+        },
+        "B0006": {
+          "MAE_cycles": 7.128320552463417,
+          "RMSE_cycles": 8.460018950400155,
+          "MedianAE_cycles": 7.289629251700688,
+          "MaxAE_cycles": 19.783420634920645,
+          "R2": 0.9277051306655255,
+          "Bias_cycles": 1.2504849770878625,
+          "MAPE_nonzero_RUL_pct": 18.14269229475273
+        },
+        "B0018": {
+          "MAE_cycles": 10.804620396581015,
+          "RMSE_cycles": 13.515983010341506,
+          "MedianAE_cycles": 9.815113378684849,
+          "MaxAE_cycles": 30.58158524015664,
+          "R2": 0.7669875041634691,
+          "Bias_cycles": 5.823386834365097,
+          "MAPE_nonzero_RUL_pct": 111.71384595406322
+        }
+      },
+      "mean": {
+        "MAE_cycles": 9.256974808342926,
+        "RMSE_cycles": 11.212054121705535,
+        "MedianAE_cycles": 8.720005857898732,
+        "MaxAE_cycles": 25.2516416031059,
+        "R2": 0.8634230593680486,
+        "Bias_cycles": 0.08691895687200606,
+        "MAPE_nonzero_RUL_pct": 50.79210410512692
+      }
+    },
+    "GradientBoosting": {
+      "folds": {
+        "B0005": {
+          "MAE_cycles": 12.046252006000781,
+          "RMSE_cycles": 13.285298672083455,
+          "MedianAE_cycles": 12.445737221546281,
+          "MaxAE_cycles": 27.94247769012756,
+          "R2": 0.864439968658631,
+          "Bias_cycles": -11.942434752958187,
+          "MAPE_nonzero_RUL_pct": 28.668535132341
+        },
+        "B0006": {
+          "MAE_cycles": 6.816387772449453,
+          "RMSE_cycles": 8.240111887070666,
+          "MedianAE_cycles": 7.289277584162477,
+          "MaxAE_cycles": 21.005590837080447,
+          "R2": 0.9314147031197543,
+          "Bias_cycles": 0.2052681853819209,
+          "MAPE_nonzero_RUL_pct": 23.71715626432746
+        },
+        "B0018": {
+          "MAE_cycles": 8.549589597158183,
+          "RMSE_cycles": 10.922130966346307,
+          "MedianAE_cycles": 6.730366792070328,
+          "MaxAE_cycles": 24.131269834697495,
+          "R2": 0.847840631573953,
+          "Bias_cycles": 7.291058810091026,
+          "MAPE_nonzero_RUL_pct": 83.4679245507591
+        }
+      },
+      "mean": {
+        "MAE_cycles": 9.137409791869473,
+        "RMSE_cycles": 10.815847175166809,
+        "MedianAE_cycles": 8.821793865926361,
+        "MaxAE_cycles": 24.3597794539685,
+        "R2": 0.8812317677841127,
+        "Bias_cycles": -1.4820359191617465,
+        "MAPE_nonzero_RUL_pct": 45.28453864914252
+      }
+    }
+  },
+  "selected_model": "ExtraTrees",
+  "selection_note": "Lowest mean MAE among three predeclared models; add independent cells for a final external test."
+}
