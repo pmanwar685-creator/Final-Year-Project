@@ -7,6 +7,23 @@ and Remaining Useful Life(RUL) of the Li-ion battery with an accuracy of 70%. Ba
 
 Future scope: Applying a deep learning model to improve the model accuracy.
 
-## Update: SOH + RUL predictor
-Code is in `src/`, outputs (plots, metrics, saved model) and a short summary in `results/` (see `results/FINDINGS.txt`).
-Run from the repo root: `python src/prep.py && python src/final.py`.
+## Extended NASA battery dataset
+
+The preprocessing scripts discover the original batteries and the uploaded
+NASA battery folders automatically. The duplicate B0025-B0028 files are
+deduplicated by battery ID.
+
+1. Open `nasa_battery_life_prediction_dataset_cleaning.ipynb` in Jupyter and
+   run its cells to convert each MATLAB cycle to a separate CSV under `tmp/`
+   and append its metadata to `metadata.csv`. The notebook preserves existing
+   metadata and skips battery IDs already present.
+2. Run `python src/prep.py` to extract discharge-cycle features for SOH and RUL.
+3. Run `python src/final.py` to train and evaluate the SOH and RUL models.
+
+SOH uses valid discharge capacities normalized against the 2 Ah nominal
+capacity. RUL uses the EOL capacity documented for each battery group, and
+only batteries with a usable pre-EOL history and an observed endpoint are
+included. Experiments with no documented EOL threshold, software-crash
+endpoints, or suspect low-capacity measurements are excluded from supervised
+RUL labels rather than assigned a guessed lifetime. Results and the final
+models are written to `results/`.

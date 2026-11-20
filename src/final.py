@@ -1,89 +1,278 @@
-"""Final SOH + RUL pipeline. Two protocols:
- A) leave-one-battery-out (strict, unseen battery)
- B) chronological split per battery (train first 60% cycles of all 4 batteries, test remaining)
-Outputs: results.json, plots/*.png, models/*.joblib"""
-import json, os, numpy as np, pandas as pd, joblib, warnings
-import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
+"""Train and evaluate SOH/RUL models on the extended NASA battery dataset."""
+import json
+import os
+import warnings
+
+import joblib
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import RidgeCV
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_absolute_error as mae, mean_squared_error, r2_score
-from rul_exp2 import traj_feats, TF
+
 import train as T
-warnings.filterwarnings('ignore')
-df, FEATS, eol = T.df, T.FEATS, T.eol
-bats = list(eol); RF = ['gap','slope20','slope40','slope_all']
-os.makedirs('results/plots', exist_ok=True); os.makedirs('results/models', exist_ok=True)
 
-soh_m = lambda: make_pipeline(StandardScaler(), RidgeCV(alphas=np.logspace(-3,3,20)))
-rul_m = lambda: GradientBoostingRegressor(n_estimators=200, max_depth=2, learning_rate=0.05, subsample=0.8, random_state=0)
-def metr(y, p): return dict(MAE=float(mae(y,p)), RMSE=float(np.sqrt(mean_squared_error(y,p))), R2=float(r2_score(y,p)))
 
-def fit_predict(train_idx_fn, test_b, mode):
-    """Return (soh_pred, rul_pred, test_df) for test battery; train set defined by mode."""
-    d = df.copy()
-    if mode == 'LOBO': trmask = d.battery != test_b
-    else: trmask = d.cycle <= (d.groupby('battery').cycle.transform('max')*0.6).astype(int)
-    trb = [b for b in bats if (b != test_b if mode=='LOBO' else True)]
-    # out-of-fold SOH for training batteries (stacking)
-    soh = np.zeros(len(d))
-    for c in trb:
-        m_in = trmask & (d.battery != c) if mode=='LOBO' else trmask & (d.battery != c)
-        if mode == 'CHRONO':   # in-battery: use own early cycles + others' early cycles
-            m_in = trmask
-        soh[(d.battery==c).values] = soh_m().fit(d[m_in][FEATS], d[m_in].soh).predict(d[d.battery==c][FEATS])
-    if mode == 'LOBO':
-        soh[(d.battery==test_b).values] = soh_m().fit(d[trmask][FEATS], d[trmask].soh).predict(d[d.battery==test_b][FEATS])
-    d['soh_pred'] = soh
-    TF_ = {b: traj_feats(d[d.battery==b].soh_pred.values, d[d.battery==b].cycle.values) for b in bats}
-    for b in bats: TF_[b]['rul'] = d[d.battery==b].rul.values; TF_[b]['cycle_']=d[d.battery==b].cycle.values; TF_['eol']=None
-    return d, TF_
+warnings.filterwarnings("ignore")
+df = T.df
+rul_df = T.rul_df
+soh_batteries = sorted(df["battery"].unique())
+rul_batteries = T.RUL_BATTERIES
+RUL_FEATURES = ["gap", "slope20", "slope40", "slope_all"]
 
-results = {'LOBO': {}, 'CHRONO': {}}
-fig, axs = plt.subplots(2, 4, figsize=(18, 7))
-# ---- Protocol A
-for i, tb in enumerate(bats):
-    d, TFs = fit_predict(None, tb, 'LOBO')
-    tr = pd.concat([TFs[b] for b in bats if b != tb]); te = TFs[tb]
-    rul = rul_m().fit(tr[RF], np.log1p(tr.rul)); p = np.clip(np.expm1(rul.predict(te[RF])), 0, None)
-    ds = d[d.battery==tb]; m = (ds.cycle <= ds.eol).values
-    results['LOBO'][tb] = {'SOH': metr(ds.soh, ds.soh_pred), 'RUL': metr(ds.rul[m], p[m])}
-    axs[0,i].plot(ds.cycle, ds.soh, 'k', label='true'); axs[0,i].plot(ds.cycle, ds.soh_pred, 'r--', label='pred')
-    axs[0,i].axhline(70, c='gray', ls=':'); axs[0,i].set_title(f'{tb} SOH (MAE {results["LOBO"][tb]["SOH"]["MAE"]:.2f}%)')
-    axs[1,i].plot(ds.cycle[m], ds.rul[m], 'k'); axs[1,i].plot(ds.cycle[m], p[m], 'r--')
-    axs[1,i].set_title(f'{tb} RUL (MAE {results["LOBO"][tb]["RUL"]["MAE"]:.1f} cyc)')
-axs[0,0].legend(); plt.tight_layout(); plt.savefig('results/plots/lobo_results.png', dpi=110); plt.close()
+os.makedirs("results/plots", exist_ok=True)
+os.makedirs("results/models", exist_ok=True)
 
-# ---- Protocol B: chronological 60/40 within every battery
-d, TFs = fit_predict(None, None, 'CHRONO')
-maxc = d.groupby('battery').cycle.transform('max'); trm = (d.cycle <= (maxc*0.6).astype(int)).values
-tr = pd.concat([TFs[b][(d[d.battery==b].cycle <= int(d[d.battery==b].cycle.max()*0.6)).values] for b in bats])
-rul = rul_m().fit(tr[RF], np.log1p(tr.rul))
-fig, axs = plt.subplots(2, 4, figsize=(18, 7))
-for i, b in enumerate(bats):
-    ds = d[d.battery==b]; t = (ds.cycle > int(ds.cycle.max()*0.6)).values
-    p = np.clip(np.expm1(rul.predict(TFs[b][RF])), 0, None)
-    m = t & (ds.cycle <= ds.eol).values
-    results['CHRONO'][b] = {'SOH': metr(ds.soh[t], ds.soh_pred[t]), 'RUL': metr(ds.rul[m], p[m]) if m.sum()>2 else None}
-    axs[0,i].plot(ds.cycle, ds.soh, 'k'); axs[0,i].plot(ds.cycle[t], ds.soh_pred[t], 'r--'); axs[0,i].set_title(f'{b} SOH test (MAE {results["CHRONO"][b]["SOH"]["MAE"]:.2f}%)')
-    axs[1,i].plot(ds.cycle[m], ds.rul[m], 'k'); axs[1,i].plot(ds.cycle[m], p[m], 'r--')
-    axs[1,i].set_title(f'{b} RUL test'+(f' (MAE {results["CHRONO"][b]["RUL"]["MAE"]:.1f})' if results['CHRONO'][b]['RUL'] else ''))
-plt.tight_layout(); plt.savefig('results/plots/chrono_results.png', dpi=110); plt.close()
 
-for pr in results:
-    for t in ('SOH','RUL'):
-        v = [results[pr][b][t] for b in bats if results[pr][b][t]]
-        results[pr][f'mean_{t}'] = {k: float(np.mean([x[k] for x in v])) for k in ('MAE','RMSE','R2')}
-json.dump(results, open('results/results.json','w'), indent=1)
-print(json.dumps({p:{k:v for k,v in r.items()} for p,r in results.items()}, indent=1))
+def soh_model():
+    return make_pipeline(
+        StandardScaler(), RidgeCV(alphas=np.logspace(-3, 3, 20))
+    )
 
-# ---- final deployable models: trained on all 4 batteries
-soh_f = soh_m().fit(df[FEATS], df.soh)
-oof = np.zeros(len(df))
-for c in bats:
-    mk = df.battery != c; oof[(df.battery==c).values] = soh_m().fit(df[mk][FEATS], df[mk].soh).predict(df[df.battery==c][FEATS])
-d2 = df.copy(); d2['soh_pred'] = oof
-tr = pd.concat([traj_feats(d2[d2.battery==b].soh_pred.values, d2[d2.battery==b].cycle.values).assign(rul=d2[d2.battery==b].rul.values) for b in bats])
-rul_f = rul_m().fit(tr[RF], np.log1p(tr.rul))
-joblib.dump({'soh': soh_f, 'rul': rul_f, 'soh_features': FEATS, 'rul_features': RF}, 'results/models/soh_rul_models.joblib')
+
+def rul_model():
+    return GradientBoostingRegressor(
+        n_estimators=200,
+        max_depth=2,
+        learning_rate=0.05,
+        subsample=0.8,
+        random_state=0,
+    )
+
+
+def trajectory_features(soh, cycles):
+    smoothed = pd.Series(soh).ewm(alpha=0.3, adjust=False).mean().to_numpy()
+    cycles = np.asarray(cycles)
+    slopes = {}
+    for window in (20, 40):
+        values = np.zeros(len(smoothed))
+        for index in range(len(smoothed)):
+            start = max(0, index - window + 1)
+            if index - start >= 4:
+                x = cycles[start:index + 1]
+                values[index] = np.polyfit(x, smoothed[start:index + 1], 1)[0]
+        slopes[f"slope{window}"] = values
+
+    baseline = float(np.mean(smoothed[:min(5, len(smoothed))]))
+    return pd.DataFrame({
+        "cycle": cycles,
+        "soh_s": smoothed,
+        "gap": smoothed - 70,
+        "slope20": slopes["slope20"],
+        "slope40": slopes["slope40"],
+        "slope_all": -(baseline - smoothed) / np.maximum(cycles, 1),
+    })
+
+
+def metrics(actual, predicted):
+    return {
+        "MAE": float(mean_absolute_error(actual, predicted)),
+        "RMSE": float(np.sqrt(mean_squared_error(actual, predicted))),
+        "R2": float(r2_score(actual, predicted)),
+    }
+
+
+def evaluate_soh_lobo():
+    predictions = {}
+    results = {}
+    for battery in soh_batteries:
+        train = df[df["battery"] != battery]
+        test = df[df["battery"] == battery]
+        model = soh_model().fit(train[T.FEATS], train["soh"])
+        prediction = model.predict(test[T.FEATS])
+        predictions[battery] = pd.Series(prediction, index=test.index)
+        results[battery] = metrics(test["soh"], prediction)
+    return predictions, results
+
+
+def lobo_rul_predictions(test_battery):
+    trajectories = {}
+    for battery in rul_batteries:
+        rows = rul_df[rul_df["battery"] == battery]
+        feature_rows = df.loc[rows["feature_index"].to_numpy()]
+        if battery == test_battery:
+            train = df[df["battery"] != test_battery]
+        else:
+            train = df[~df["battery"].isin([test_battery, battery])]
+        model = soh_model().fit(train[T.FEATS], train["soh"])
+        predicted_soh = model.predict(feature_rows[T.FEATS])
+        trajectory = trajectory_features(predicted_soh, rows["cycle"])
+        trajectory["rul"] = rows["rul"].to_numpy()
+        trajectories[battery] = trajectory
+
+    results = {}
+    for battery in rul_batteries:
+        train = pd.concat(
+            [trajectories[other] for other in rul_batteries if other != battery],
+            ignore_index=True,
+        )
+        test = trajectories[battery]
+        model = rul_model().fit(train[RUL_FEATURES], np.log1p(train["rul"]))
+        prediction = np.clip(np.expm1(model.predict(test[RUL_FEATURES])), 0, None)
+        results[battery] = metrics(test["rul"], prediction)
+    return trajectories, results
+
+
+def evaluate_chronological():
+    max_cycle = df.groupby("battery")["cycle"].transform("max")
+    training_mask = df["cycle"] <= (max_cycle * 0.6).astype(int)
+    model = soh_model().fit(df[training_mask][T.FEATS], df[training_mask]["soh"])
+    soh_predictions = model.predict(df[T.FEATS])
+    predictions = pd.Series(soh_predictions, index=df.index)
+
+    soh_results = {}
+    for battery in soh_batteries:
+        test = df[(df["battery"] == battery) & ~training_mask]
+        if test.empty:
+            continue
+        soh_results[battery] = metrics(
+            test["soh"], predictions.loc[test.index]
+        )
+
+    trajectories = {}
+    training_parts = []
+    for battery in rul_batteries:
+        rows = rul_df[rul_df["battery"] == battery]
+        trajectory = trajectory_features(
+            predictions.loc[rows["feature_index"].to_numpy()], rows["cycle"]
+        )
+        trajectory["rul"] = rows["rul"].to_numpy()
+        split_cycle = int(rows["cycle"].max() * 0.6)
+        train_rows = trajectory[trajectory["cycle"] <= split_cycle]
+        test_rows = trajectory[trajectory["cycle"] > split_cycle]
+        if not train_rows.empty:
+            training_parts.append(train_rows)
+        trajectories[battery] = (trajectory, test_rows)
+
+    if not training_parts:
+        raise ValueError("No RUL rows remain for chronological training.")
+    training = pd.concat(training_parts, ignore_index=True)
+    model = rul_model().fit(training[RUL_FEATURES], np.log1p(training["rul"]))
+    rul_results = {}
+    for battery, (_, test) in trajectories.items():
+        if test.empty:
+            continue
+        prediction = np.clip(np.expm1(model.predict(test[RUL_FEATURES])), 0, None)
+        rul_results[battery] = metrics(test["rul"], prediction)
+    return soh_results, rul_results
+
+
+def save_metric_plots(path, title, values, label):
+    columns = min(4, max(1, len(values)))
+    rows = int(np.ceil(len(values) / columns))
+    figure, axes = plt.subplots(
+        rows, columns, figsize=(4.5 * columns, 2.8 * rows), squeeze=False
+    )
+    for axis, (battery, metric) in zip(axes.flat, values.items()):
+        axis.bar(["MAE", "RMSE"], [metric["MAE"], metric["RMSE"]])
+        axis.set_title(f"{battery} {label}")
+    for axis in axes.flat[len(values):]:
+        axis.set_visible(False)
+    figure.suptitle(title)
+    figure.tight_layout()
+    figure.savefig(path, dpi=110)
+    plt.close(figure)
+
+
+def mean_metrics(values):
+    return {
+        key: float(np.mean([metric[key] for metric in values.values()]))
+        for key in ("MAE", "RMSE", "R2")
+    } if values else None
+
+
+def main():
+    if len(soh_batteries) < 2:
+        raise ValueError("At least two batteries with valid capacities are required.")
+    if len(rul_batteries) < 2:
+        raise ValueError("At least two complete, README-labeled batteries are required for RUL.")
+
+    _, soh_lobo = evaluate_soh_lobo()
+    _, rul_lobo = lobo_rul_predictions(rul_batteries[0])
+
+    chronological_soh, chronological_rul = evaluate_chronological()
+    results = {
+        "LOBO": {
+            "SOH": soh_lobo,
+            "RUL": rul_lobo,
+            "mean_SOH": mean_metrics(soh_lobo),
+            "mean_RUL": mean_metrics(rul_lobo),
+        },
+        "CHRONO": {
+            "SOH": chronological_soh,
+            "RUL": chronological_rul,
+            "mean_SOH": mean_metrics(chronological_soh),
+            "mean_RUL": mean_metrics(chronological_rul),
+        },
+        "data": {
+            "soh_batteries": soh_batteries,
+            "rul_batteries": rul_batteries,
+            "rul_eol_cycles": T.eol,
+            "rul_eol_capacity_ah": {
+                battery: T.EOL_CAPACITY[battery] for battery in rul_batteries
+            },
+            "rul_excluded_batteries": sorted(
+                set(df["battery"]) - set(rul_batteries)
+            ),
+            "minimum_capacity_ah": T.MIN_VALID_CAPACITY,
+            "maximum_capacity_ah": T.MAX_VALID_CAPACITY,
+        },
+    }
+    with open("results/results.json", "w", encoding="utf-8") as output:
+        json.dump(results, output, indent=2)
+
+    save_metric_plots(
+        "results/plots/lobo_soh.png", "Leave-one-battery-out SOH MAE/RMSE",
+        soh_lobo, "SOH",
+    )
+    save_metric_plots(
+        "results/plots/lobo_rul.png", "Leave-one-battery-out RUL MAE/RMSE",
+        rul_lobo, "RUL",
+    )
+    save_metric_plots(
+        "results/plots/chrono_soh.png", "Chronological SOH MAE/RMSE",
+        chronological_soh, "SOH",
+    )
+    save_metric_plots(
+        "results/plots/chrono_rul.png", "Chronological RUL MAE/RMSE",
+        chronological_rul, "RUL",
+    )
+
+    final_soh = soh_model().fit(df[T.FEATS], df["soh"])
+    oof_trajectories = []
+    for battery in rul_batteries:
+        rows = rul_df[rul_df["battery"] == battery]
+        feature_rows = df.loc[rows["feature_index"].to_numpy()]
+        training = df[df["battery"] != battery]
+        predicted_soh = soh_model().fit(
+            training[T.FEATS], training["soh"]
+        ).predict(feature_rows[T.FEATS])
+        trajectory = trajectory_features(predicted_soh, rows["cycle"])
+        trajectory["rul"] = rows["rul"].to_numpy()
+        oof_trajectories.append(trajectory)
+    rul_training = pd.concat(oof_trajectories, ignore_index=True)
+    final_rul = rul_model().fit(
+        rul_training[RUL_FEATURES], np.log1p(rul_training["rul"])
+    )
+    joblib.dump(
+        {
+            "soh": final_soh,
+            "rul": final_rul,
+            "soh_features": T.FEATS,
+            "rul_features": RUL_FEATURES,
+            "nominal_capacity_ah": T.NOMINAL_CAPACITY,
+            "rul_eol_capacity_ah": results["data"]["rul_eol_capacity_ah"],
+            "rul_batteries": rul_batteries,
+        },
+        "results/models/soh_rul_models.joblib",
+    )
+    print(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    main()
